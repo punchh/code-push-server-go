@@ -4,12 +4,17 @@ import (
 	"log"
 	"net/http"
 	"strconv"
+	"time"
 
 	"com.lc.go.codepush/server/config"
 	"com.lc.go.codepush/server/db/redis"
 	"com.lc.go.codepush/server/model"
 	"com.lc.go.codepush/server/model/constants"
 	"com.lc.go.codepush/server/utils"
+	"github.com/aws/aws-sdk-go/aws"
+	"github.com/aws/aws-sdk-go/aws/credentials"
+	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/s3"
 	"github.com/gin-gonic/gin"
 )
 
@@ -62,7 +67,25 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 					updateInfoRedis.IsMandatory = true
 					label := strconv.Itoa(*packag.Id)
 					updateInfoRedis.Label = label
-					updateInfoRedis.DownloadUrl = config.ResourceUrl + *packag.Download
+
+					s3Config := &aws.Config{
+						Credentials: credentials.NewStaticCredentials(config.CodePush.Aws.KeyId, config.CodePush.Aws.Secret, ""),
+						Endpoint:    aws.String(config.CodePush.Aws.Endpoint),
+						Region:      aws.String(config.CodePush.Aws.Region),
+					}
+					newSession, _ := session.NewSession(s3Config)
+
+					s3Client := s3.New(newSession)
+					request, _ := s3Client.GetObjectRequest(&s3.GetObjectInput{
+						Bucket: aws.String(config.CodePush.Aws.Bucket),
+						Key:    aws.String(*packag.Download),
+					})
+
+					resourceURL, err := request.Presign(15 * time.Minute) // 15 min
+					if err != nil {
+						log.Panic("Failed to sign request", err)
+					}
+					updateInfoRedis.DownloadUrl = resourceURL
 					if packag.Description != nil {
 						updateInfoRedis.Description = *packag.Description
 					}
