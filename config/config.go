@@ -133,7 +133,6 @@ func LoadConfig() *appConfig {
 			if k == "db_port" {
 				u64, _ := strconv.ParseUint(v.(string), 10, 32)
 				dbObj.Port = uint(u64)
-				// dbobj.Port = uint(u64)
 			}
 			if k == "db_name" {
 				dbObj.DBname = v.(string)

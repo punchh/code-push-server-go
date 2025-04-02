@@ -1,6 +1,6 @@
 module com.lc.go.codepush/server
 
-go 1.21.5
+go 1.24.2
 
 require (
 	github.com/go-playground/validator/v10 v10.19.0
