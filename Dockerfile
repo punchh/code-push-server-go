@@ -21,7 +21,6 @@ RUN apk update \
 WORKDIR /usr/app/
 
 COPY --from=build-stage server .
-COPY --from=build-stage app/config/* config/
 
 EXPOSE 8080
 ENTRYPOINT ["./server"]
