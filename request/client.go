@@ -64,7 +64,7 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 					updateInfoRedis.PackageHash = *packag.Hash
 					updateInfoRedis.PackageSize = *packag.Size
 					updateInfoRedis.IsAvailable = true
-					updateInfoRedis.IsMandatory = true
+					updateInfoRedis.IsMandatory = false
 					label := strconv.Itoa(*packag.Id)
 					updateInfoRedis.Label = label
 
@@ -104,7 +104,7 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 			updateInfo.PackageHash = updateInfoRedis.PackageHash
 			updateInfo.PackageSize = updateInfoRedis.PackageSize
 			updateInfo.IsAvailable = true
-			updateInfo.IsMandatory = true
+			updateInfo.IsMandatory = false
 			updateInfo.Label = updateInfoRedis.Label
 			updateInfo.DownloadUrl = updateInfoRedis.DownloadUrl
 			updateInfo.Description = updateInfoRedis.Description
