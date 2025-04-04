@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"path"
 
 	"com.lc.go.codepush/server/config"
 	"com.lc.go.codepush/server/db"
@@ -197,7 +198,7 @@ func (App) UploadBundle(ctx *gin.Context) {
 		if err != nil {
 			log.Panic(err.Error())
 		}
-		os.WriteFile(config.CodePush.Local.SavePath+"/"+key, buf.Bytes(), 0777)
+		os.WriteFile(path.Clean(config.CodePush.Local.SavePath+"/"+key), buf.Bytes(), 0777)
 	case "aws":
 		s3Config := &aws.Config{
 			Credentials:      credentials.NewStaticCredentials(config.CodePush.Aws.KeyId, config.CodePush.Aws.Secret, ""),
