@@ -96,7 +96,7 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 		if deploymentVersionNew != nil {
 			updateInfoRedis.NewVersion = *deploymentVersionNew.AppVersion
 		}
-		redis.SetRedisObj(redisKey, updateInfoRedis, -1)
+		redis.SetRedisObj(redisKey, updateInfoRedis, time.Duration(60*60*24)*time.Second)
 	}
 	if updateInfoRedis.PackageHash != "" {
 		if updateInfoRedis.PackageHash != packageHash && appVersion == updateInfoRedis.TargetBinaryRange {
