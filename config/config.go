@@ -94,7 +94,7 @@ func LoadConfig() *appConfig {
 
 	// default values
 	config.DBUser.MaxIdleConns = 5
-	config.DBUser.MaxOpenConns = 60
+	config.DBUser.MaxOpenConns = 20
 	config.DBUser.ConnMaxLifetime = 300
 
 	config.Port = ":8080"

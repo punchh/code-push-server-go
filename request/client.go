@@ -81,7 +81,7 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 						Key:    aws.String(*packag.Download),
 					})
 
-					resourceURL, err := request.Presign(15 * time.Minute) // 15 min
+					resourceURL, err := request.Presign(24 * time.Hour) // 24 hours
 					if err != nil {
 						log.Panic("Failed to sign request", err)
 					}
@@ -96,7 +96,7 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 		if deploymentVersionNew != nil {
 			updateInfoRedis.NewVersion = *deploymentVersionNew.AppVersion
 		}
-		redis.SetRedisObj(redisKey, updateInfoRedis, time.Duration(60*60*24)*time.Second)
+		redis.SetRedisObj(redisKey, updateInfoRedis, time.Duration(24*time.Hour-(10*time.Second)))
 	}
 	if updateInfoRedis.PackageHash != "" {
 		if updateInfoRedis.PackageHash != packageHash && appVersion == updateInfoRedis.TargetBinaryRange {
