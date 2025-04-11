@@ -22,6 +22,12 @@ func main() {
 
 	// g.Static("/bundels", "bundels")
 
+	g.GET("/ping", func(c *gin.Context) {
+		c.JSON(200, gin.H{
+			"message": "pong",
+		})
+	})
+
 	g.GET("/v0.1/public/codepush/update_check", request.Client{}.CheckUpdate)
 	g.POST("/v0.1/public/codepush/report_status/deploy", request.Client{}.ReportStatus)
 	g.POST("/v0.1/public/codepush/report_status/download", request.Client{}.Download)
