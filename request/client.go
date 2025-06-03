@@ -69,9 +69,10 @@ func (Client) CheckUpdate(ctx *gin.Context) {
 					updateInfoRedis.Label = label
 
 					s3Config := &aws.Config{
-						Credentials: credentials.NewStaticCredentials(config.CodePush.Aws.KeyId, config.CodePush.Aws.Secret, ""),
-						Endpoint:    aws.String(config.CodePush.Aws.Endpoint),
-						Region:      aws.String(config.CodePush.Aws.Region),
+						Credentials:      credentials.NewStaticCredentials(config.CodePush.Aws.KeyId, config.CodePush.Aws.Secret, ""),
+						Endpoint:         aws.String(config.CodePush.Aws.Endpoint),
+						Region:           aws.String(config.CodePush.Aws.Region),
+						S3ForcePathStyle: aws.Bool(config.CodePush.Aws.S3ForcePathStyle),
 					}
 					newSession, _ := session.NewSession(s3Config)
 
