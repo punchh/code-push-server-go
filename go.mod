@@ -51,3 +51,4 @@ require (
 	github.com/redis/go-redis/v9 v9.5.1
 	gorm.io/gorm v1.25.9
 )
+replace launchpad.net/gocheck => gopkg.in/check.v1 v1.0.0-20201130134442-10cb98267c6c
