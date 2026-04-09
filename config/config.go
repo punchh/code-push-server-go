@@ -21,6 +21,10 @@ type appConfig struct {
 	TokenExpireTime int64
 	Environment     string `json:"environment" validate:"required"`
 	TenantName      string `json:"tenant_name" validate:"required"`
+	// Observability (same JSON keys as go-email-templates service secrets)
+	AirbrakeProjectID  int64
+	AirbrakeProjectKey string
+	NewRelicLicenseKey string
 }
 type dbConfig struct {
 	Write           dbConfigObj
@@ -76,6 +80,20 @@ func GetConfig() *appConfig {
 }
 
 func LoadConfig() *appConfig {
+	intFormatter := func(v interface{}) (val int64) {
+		switch ta := v.(type) {
+		case int:
+			val = int64(ta)
+		case int64:
+			val = ta
+		case float64:
+			val = int64(ta)
+		case string:
+			val, _ = strconv.ParseInt(ta, 10, 64)
+		}
+		return
+	}
+
 	fmt.Println("Fetching config from AWS secret manager...")
 	keys := []string{
 		"global",  // Global secrets
@@ -205,6 +223,16 @@ func LoadConfig() *appConfig {
 
 			if k == "environment" {
 				config.Environment = v.(string)
+			}
+
+			if k == "airbrake_project_id" {
+				config.AirbrakeProjectID = intFormatter(v)
+			}
+			if k == "airbrake_project_key" {
+				config.AirbrakeProjectKey = v.(string)
+			}
+			if k == "newrelic_license_key" {
+				config.NewRelicLicenseKey = v.(string)
 			}
 		}
 	}

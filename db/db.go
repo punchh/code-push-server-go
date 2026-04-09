@@ -5,6 +5,8 @@ import (
 	"time"
 
 	"com.lc.go.codepush/server/config"
+
+	_ "github.com/newrelic/go-agent/v3/integrations/nrmysql"
 	"gorm.io/driver/mysql"
 	"gorm.io/gorm"
 	"gorm.io/gorm/logger"
@@ -20,7 +22,11 @@ func GetUserDB() (odb *gorm.DB, err error) {
 	dbConfig := config.GetConfig().DBUser
 	dsnSource := dbConfig.Write.UserName + ":" + dbConfig.Write.Password + "@tcp(" + dbConfig.Write.Host + ":" + strconv.Itoa(int(dbConfig.Write.Port)) + ")/" + dbConfig.Write.DBname + "?charset=utf8mb4&parseTime=True&loc=Local"
 
-	db, err := gorm.Open(mysql.Open(dsnSource), &gorm.Config{
+	// Same driver as go-email-templates (sql.Open("nrmysql", ...)); pairs with HTTP txns when using Request context.
+	db, err := gorm.Open(mysql.New(mysql.Config{
+		DriverName: "nrmysql",
+		DSN:        dsnSource,
+	}), &gorm.Config{
 		Logger: logger.Default.LogMode(logger.Error),
 	})
 	if err != nil {
