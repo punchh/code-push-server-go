@@ -10,7 +10,43 @@ import (
 	"com.lc.go.codepush/server/model/constants"
 	"com.lc.go.codepush/server/utils"
 	"github.com/gin-gonic/gin"
+	punchhmw "github.com/punchh/go-packages/middleware"
 )
+
+var airbrakeHook *punchhmw.Airbrake
+
+func SetAirbrakeHook(hook *punchhmw.Airbrake) {
+	airbrakeHook = hook
+}
+
+func AirbrakeRecovery() gin.HandlerFunc {
+	return func(c *gin.Context) {
+		defer func() {
+			if r := recover(); r != nil {
+				if airbrakeHook != nil {
+					airbrakeHook.Notify(r, c.Request)
+				}
+				log.Printf("Error:%v", r)
+				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
+					"code":    500,
+					"msg":     "Internal Server Error",
+					"success": false,
+				})
+			}
+		}()
+		c.Next()
+		if c.Writer.Status() >= http.StatusInternalServerError {
+			if len(c.Errors) > 0 {
+				for _, e := range c.Errors {
+					if airbrakeHook != nil {
+						airbrakeHook.Notify(e.Err, c.Request)
+					}
+					log.Printf("server error: %v", e.Err)
+				}
+			}
+		}
+	}
+}
 
 // 檢查token
 func CheckToken(ctx *gin.Context) {

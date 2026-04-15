@@ -34,7 +34,9 @@ func main() {
 		airKey = os.Getenv("AIRBRAKE_PROJECT_KEY")
 	}
 	if airPID > 0 && airKey != "" {
-		logger.AddHook(punchhmw.NewAirbrake(configs.Environment, airPID, airKey))
+		abHook := punchhmw.NewAirbrake(configs.Environment, airPID, airKey)
+		logger.AddHook(abHook)
+		localmw.SetAirbrakeHook(abHook)
 	}
 
 	nrKey := configs.NewRelicLicenseKey
@@ -49,7 +51,9 @@ func main() {
 
 	logger.Println("starting HTTP server")
 
-	g := gin.Default()
+	g := gin.New()
+	g.Use(gin.Logger())
+	g.Use(localmw.AirbrakeRecovery())
 	if nr != nil && nr.Application != nil {
 		g.Use(nrgin.Middleware(nr.Application))
 	}
