@@ -21,6 +21,7 @@ type appConfig struct {
 	TokenExpireTime int64
 	Environment     string `json:"environment" validate:"required"`
 	TenantName      string `json:"tenant_name" validate:"required"`
+	JWTSecret string
 }
 type dbConfig struct {
 	Write           dbConfigObj
@@ -205,6 +206,10 @@ func LoadConfig() *appConfig {
 
 			if k == "environment" {
 				config.Environment = v.(string)
+			}
+
+			if k == "jwt_secret" {
+				config.JWTSecret = v.(string)
 			}
 		}
 	}
