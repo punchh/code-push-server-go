@@ -3,7 +3,9 @@ package request
 import (
 	"log"
 	"net/http"
+	"os/exec"
 	"strconv"
+	"strings"
 	"time"
 
 	"com.lc.go.codepush/server/config"
@@ -35,6 +37,23 @@ type updateInfo struct {
 type updateInfoRedisInfo struct {
 	updateInfo
 	NewVersion string
+}
+
+func getCommitHash() string {
+	out, err := exec.Command("git", "rev-parse", "--short", "HEAD").Output()
+	if err != nil {
+		return "unknown"
+	}
+	return strings.TrimSpace(string(out))
+}
+
+func (Client) ApiStatus(ctx *gin.Context) {
+	ctx.Header("Cache-Control", "no-cache, no-store")
+	ctx.JSON(http.StatusOK, gin.H{
+		"status":     200,
+		"message":    "All is Well!.",
+		"commitHash": getCommitHash(),
+	})
 }
 
 func (Client) CheckUpdate(ctx *gin.Context) {

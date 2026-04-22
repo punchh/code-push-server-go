@@ -28,6 +28,7 @@ func main() {
 		})
 	})
 
+	g.GET("/api/status", request.Client{}.ApiStatus)
 	g.GET("/v0.1/public/codepush/update_check", request.Client{}.CheckUpdate)
 	g.POST("/v0.1/public/codepush/report_status/deploy", request.Client{}.ReportStatus)
 	g.POST("/v0.1/public/codepush/report_status/download", request.Client{}.Download)
