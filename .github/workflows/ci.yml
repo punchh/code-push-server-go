@@ -1,0 +1,42 @@
+name: Go CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+
+  workflow_dispatch:
+    inputs:
+      skip_tests:
+        description: 'Skip running tests'
+        required: false
+        default: false
+        type: boolean
+      triggered_user:
+        description: 'Who triggered the workflow'
+        required: false
+        default: "<!here>"
+        type: string
+
+jobs:
+  go-ci:
+    permissions:
+      id-token: write
+      contents: write
+      packages: read
+    uses: punchh/GHA-central-workflow/.github/workflows/go-ci.yml@main
+
+    with:
+      repository: ${{ github.repository }}
+      branch: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name) }}
+      go_version: 1.24
+      triggered_user: ${{ github.event_name == 'workflow_dispatch' && inputs.triggered_user || '<!here>' }}
+      skip_tests: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_tests || false }}
+      test_cases: false
+      snyk_severity_threshold: "critical"
+      go_build: true
+    secrets:
+      SVC_ACCOUNT_GITHUB_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
+      SVC_ACCOUNT_SNYK_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_SNYK_ORG_TOKEN }}
+      CAPTAIN_DEVOPS_SLACK_BOT_TOKEN: ${{ secrets.CAPTAIN_DEVOPS_SLACK_BOT_TOKEN }}
