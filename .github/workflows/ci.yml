@@ -35,7 +35,6 @@ jobs:
       skip_tests: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_tests || false }}
       test_cases: false
       snyk_severity_threshold: "critical"
-      go_build: true
     secrets:
       SVC_ACCOUNT_GITHUB_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
       SVC_ACCOUNT_SNYK_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_SNYK_ORG_TOKEN }}
