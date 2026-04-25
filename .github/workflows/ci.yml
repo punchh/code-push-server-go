@@ -23,26 +23,41 @@ jobs:
         with:
           go-version: "1.24"
 
-      - name: Configure private Go modules (punchh)
+      # Go uses git for GOPRIVATE modules; netrc + url.insteadOf avoids
+      # "could not read Username for 'https://github.com': terminal prompts disabled".
+      - name: Authenticate for private github.com/punchh modules
         env:
           TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
         run: |
-          if [ -n "$TOKEN" ]; then
-            git config --global url."https://x-access-token:${TOKEN}@github.com/punchh/".insteadOf "https://github.com/punchh/"
+          if [ -z "$TOKEN" ]; then
+            echo "::error::SVC_ACCOUNT_GITHUB_ORG_TOKEN is empty or not passed to this job."
+            echo "Add the org/repo secret under Settings → Secrets and variables → Actions."
+            echo "Fork PRs: GitHub does not give fork workflows access to org secrets—use a branch on this repo for the PR."
+            exit 1
           fi
+          {
+            echo "machine github.com"
+            echo "login x-access-token"
+            echo "password ${TOKEN}"
+          } >> "$HOME/.netrc"
+          chmod 600 "$HOME/.netrc"
+          git config --global url."https://x-access-token:${TOKEN}@github.com/punchh/".insteadOf "https://github.com/punchh/"
 
       - name: Go mod download
         env:
           GOPRIVATE: github.com/punchh
           GONOSUMDB: github.com/punchh
+          GOPROXY: direct
         run: go mod download
 
       - name: Build
         env:
           GOPRIVATE: github.com/punchh
+          GOPROXY: direct
         run: go build -v ./...
 
       - name: Test
         env:
           GOPRIVATE: github.com/punchh
+          GOPROXY: direct
         run: go test -v ./...
