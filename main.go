@@ -2,23 +2,66 @@ package main
 
 import (
 	"fmt"
+	"os"
+	"strconv"
 
 	"com.lc.go.codepush/server/config"
-	"com.lc.go.codepush/server/middleware"
+	localmw "com.lc.go.codepush/server/middleware"
 	"com.lc.go.codepush/server/request"
 
 	"github.com/gin-contrib/gzip"
-
 	"github.com/gin-gonic/gin"
+	"github.com/newrelic/go-agent/v3/integrations/nrgin"
+	punchhmw "github.com/punchh/go-packages/middleware"
+	"github.com/sirupsen/logrus"
 )
 
 func main() {
 	fmt.Println("code-push-server-go V1.0.5")
 	// gin.SetMode(gin.ReleaseMode)
-	g := gin.Default()
-	g.Use(gzip.Gzip(gzip.DefaultCompression))
-	g.Use(middleware.Recover)
+
+	logger := punchhmw.NewLogger(logrus.StandardLogger())
 	configs := config.GetConfig()
+
+	// Airbrake on logrus errors (same hook as go-email-templates / go-packages)
+	airPID, airKey := configs.AirbrakeProjectID, configs.AirbrakeProjectKey
+	if airPID == 0 {
+		if s := os.Getenv("AIRBRAKE_PROJECT_ID"); s != "" {
+			airPID, _ = strconv.ParseInt(s, 10, 64)
+		}
+	}
+	if airKey == "" {
+		airKey = os.Getenv("AIRBRAKE_PROJECT_KEY")
+	}
+	if airPID > 0 && airKey != "" {
+		abHook := punchhmw.NewAirbrake(configs.Environment, airPID, airKey)
+		logger.AddHook(abHook)
+		localmw.SetAirbrakeHook(abHook)
+	}
+
+	nrKey := configs.NewRelicLicenseKey
+	if nrKey == "" {
+		nrKey = os.Getenv("NEW_RELIC_LICENSE_KEY")
+	}
+
+	var nr *punchhmw.NewRelic
+	if nrKey != "" {
+		var err error
+		nr, err = punchhmw.Newnewrelic(configs.Environment, "code-push-server-go", nrKey)
+		if err != nil {
+			logger.Println("newrelic init:", err)
+		}
+	}
+
+	logger.Println("starting HTTP server")
+
+	g := gin.New()
+	g.Use(gin.Logger())
+	if nr != nil && nr.Application != nil {
+		g.Use(nrgin.Middleware(nr.Application))
+	}
+	g.Use(gzip.Gzip(gzip.DefaultCompression))
+	g.Use(localmw.Recover)
 
 	// g.Static("/bundels", "bundels")
 
@@ -36,7 +79,7 @@ func main() {
 	{
 		apiGroup.POST("/login", request.User{}.Login)
 	}
-	authApi := apiGroup.Use(middleware.CheckToken)
+	authApi := apiGroup.Use(localmw.CheckToken)
 	{
 		authApi.POST("/createApp", request.App{}.CreateApp)
 		authApi.POST("/createDeployment", request.App{}.CreateDeployment)
