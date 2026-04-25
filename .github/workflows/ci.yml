@@ -47,21 +47,21 @@ jobs:
           chmod 600 "$HOME/.netrc"
           git config --global url."https://x-access-token:${TOKEN}@github.com/punchh/".insteadOf "https://github.com/punchh/"
 
+      # Do not set GOPROXY=direct: it forces every module through git; some public tags
+      # (e.g. chenzhuoyu/iasm) can fail with "unknown revision" on GitHub while proxy.golang.org still serves them.
+      # GOPRIVATE already makes only github.com/punchh/* bypass the proxy.
       - name: Go mod download
         env:
           GOPRIVATE: github.com/punchh
           GONOSUMDB: github.com/punchh
-          GOPROXY: direct
         run: go mod download
 
       - name: Build
         env:
           GOPRIVATE: github.com/punchh
-          GOPROXY: direct
         run: go build -v ./...
 
       - name: Test
         env:
           GOPRIVATE: github.com/punchh
-          GOPROXY: direct
         run: go test -v ./...
