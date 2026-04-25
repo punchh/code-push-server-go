@@ -1,3 +1,6 @@
+# Self-contained Go CI (does not call punchh/GHA-central-workflow — that reusable
+# workflow must be allowed by org settings; use this file if you see "workflow was not found".)
+
 name: Go CI
 
 on:
@@ -5,37 +8,41 @@ on:
   push:
     branches:
       - main
-
   workflow_dispatch:
-    inputs:
-      skip_tests:
-        description: 'Skip running tests'
-        required: false
-        default: false
-        type: boolean
-      triggered_user:
-        description: 'Who triggered the workflow'
-        required: false
-        default: "<!here>"
-        type: string
+
+permissions:
+  contents: read
 
 jobs:
-  go-ci:
-    permissions:
-      id-token: write
-      contents: write
-      packages: read
-    uses: punchh/GHA-central-workflow/.github/workflows/go-ci.yml@main
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
 
-    with:
-      repository: ${{ github.repository }}
-      branch: ${{ github.event_name == 'workflow_dispatch' && github.ref_name || (github.event_name == 'pull_request' && github.event.pull_request.head.ref || github.ref_name) }}
-      go_version: 1.24
-      triggered_user: ${{ github.event_name == 'workflow_dispatch' && inputs.triggered_user || '<!here>' }}
-      skip_tests: ${{ github.event_name == 'workflow_dispatch' && inputs.skip_tests || false }}
-      test_cases: false
-      snyk_severity_threshold: "critical"
-    secrets:
-      SVC_ACCOUNT_GITHUB_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
-      SVC_ACCOUNT_SNYK_ORG_TOKEN: ${{ secrets.SVC_ACCOUNT_SNYK_ORG_TOKEN }}
-      CAPTAIN_DEVOPS_SLACK_BOT_TOKEN: ${{ secrets.CAPTAIN_DEVOPS_SLACK_BOT_TOKEN }}
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.24"
+
+      - name: Configure private Go modules (punchh)
+        env:
+          TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
+        run: |
+          if [ -n "$TOKEN" ]; then
+            git config --global url."https://x-access-token:${TOKEN}@github.com/punchh/".insteadOf "https://github.com/punchh/"
+          fi
+
+      - name: Go mod download
+        env:
+          GOPRIVATE: github.com/punchh
+          GONOSUMDB: github.com/punchh
+        run: go mod download
+
+      - name: Build
+        env:
+          GOPRIVATE: github.com/punchh
+        run: go build -v ./...
+
+      - name: Test
+        env:
+          GOPRIVATE: github.com/punchh
+        run: go test -v ./...
