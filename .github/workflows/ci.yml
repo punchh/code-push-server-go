@@ -25,15 +25,19 @@ jobs:
 
       # Go uses git for GOPRIVATE modules; netrc + url.insteadOf avoids
       # "could not read Username for 'https://github.com': terminal prompts disabled".
+      # Prefer org PAT (works for fork PRs if you expose a dedicated secret — usually you still
+      # need a branch on the upstream repo). If unset, fall back to GITHUB_TOKEN (same-repo
+      # workflows only; org must allow Actions to read private repos — see GitHub docs).
       - name: Authenticate for private github.com/punchh modules
         env:
-          TOKEN: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
+          PAT: ${{ secrets.SVC_ACCOUNT_GITHUB_ORG_TOKEN }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          TOKEN="${PAT}"
           if [ -z "$TOKEN" ]; then
-            echo "::error::SVC_ACCOUNT_GITHUB_ORG_TOKEN is empty or not passed to this job."
-            echo "Add the org/repo secret under Settings → Secrets and variables → Actions."
-            echo "Fork PRs: GitHub does not give fork workflows access to org secrets—use a branch on this repo for the PR."
-            exit 1
+            TOKEN="${GITHUB_TOKEN}"
+            echo "SVC_ACCOUNT_GITHUB_ORG_TOKEN not set — using GITHUB_TOKEN for git HTTPS."
+            echo "If go mod download fails with 403, add SVC_ACCOUNT_GITHUB_ORG_TOKEN or open the PR from a branch on this repo (not a fork)."
           fi
           {
             echo "machine github.com"
