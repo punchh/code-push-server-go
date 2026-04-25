@@ -44,16 +44,19 @@ func main() {
 		nrKey = os.Getenv("NEW_RELIC_LICENSE_KEY")
 	}
 
-	nr, err := punchhmw.Newnewrelic(configs.Environment, "code-push-server-go", nrKey)
-	if err != nil {
-		logger.Println("newrelic init:", err)
+	var nr *punchhmw.NewRelic
+	if nrKey != "" {
+		var err error
+		nr, err = punchhmw.Newnewrelic(configs.Environment, "code-push-server-go", nrKey)
+		if err != nil {
+			logger.Println("newrelic init:", err)
+		}
 	}
 
 	logger.Println("starting HTTP server")
 
 	g := gin.New()
 	g.Use(gin.Logger())
-	g.Use(localmw.AirbrakeRecovery())
 	if nr != nil && nr.Application != nil {
 		g.Use(nrgin.Middleware(nr.Application))
 	}

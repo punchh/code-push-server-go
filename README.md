@@ -3,7 +3,7 @@ Codepush server go is compatible with [react-native-code-push](https://github.co
 
 ## Support version
 - [mysql](https://dev.mysql.com/downloads/mysql/)  >= 8.0
-- [golang](https://go.dev/dl/) >= 1.21.5
+- [golang](https://go.dev/dl/) >= 1.24
 - [redis](https://redis.io/downloads/)  >= 5.0
 
 ## Support client version

@@ -80,18 +80,23 @@ func GetConfig() *appConfig {
 }
 
 func LoadConfig() *appConfig {
-	intFormatter := func(v interface{}) (val int64) {
+	intFormatter := func(v interface{}) (val int64, ok bool) {
 		switch ta := v.(type) {
 		case int:
-			val = int64(ta)
+			return int64(ta), true
 		case int64:
-			val = ta
+			return ta, true
 		case float64:
-			val = int64(ta)
+			return int64(ta), true
 		case string:
-			val, _ = strconv.ParseInt(ta, 10, 64)
+			parsed, err := strconv.ParseInt(ta, 10, 64)
+			if err != nil {
+				return 0, false
+			}
+			return parsed, true
+		default:
+			return 0, false
 		}
-		return
 	}
 
 	fmt.Println("Fetching config from AWS secret manager...")
@@ -226,7 +231,11 @@ func LoadConfig() *appConfig {
 			}
 
 			if k == "airbrake_project_id" {
-				config.AirbrakeProjectID = intFormatter(v)
+				if parsed, ok := intFormatter(v); ok {
+					config.AirbrakeProjectID = parsed
+				} else {
+					fmt.Printf("config: invalid airbrake_project_id value (%T): %v\n", v, v)
+				}
 			}
 			if k == "airbrake_project_key" {
 				config.AirbrakeProjectKey = v.(string)

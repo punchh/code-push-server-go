@@ -19,35 +19,6 @@ func SetAirbrakeHook(hook *punchhmw.Airbrake) {
 	airbrakeHook = hook
 }
 
-func AirbrakeRecovery() gin.HandlerFunc {
-	return func(c *gin.Context) {
-		defer func() {
-			if r := recover(); r != nil {
-				if airbrakeHook != nil {
-					airbrakeHook.Notify(r, c.Request)
-				}
-				log.Printf("Error:%v", r)
-				c.AbortWithStatusJSON(http.StatusInternalServerError, gin.H{
-					"code":    500,
-					"msg":     "Internal Server Error",
-					"success": false,
-				})
-			}
-		}()
-		c.Next()
-		if c.Writer.Status() >= http.StatusInternalServerError {
-			if len(c.Errors) > 0 {
-				for _, e := range c.Errors {
-					if airbrakeHook != nil {
-						airbrakeHook.Notify(e.Err, c.Request)
-					}
-					log.Printf("server error: %v", e.Err)
-				}
-			}
-		}
-	}
-}
-
 // 檢查token
 func CheckToken(ctx *gin.Context) {
 	var token, _ = ctx.Cookie("token")
@@ -90,6 +61,9 @@ func Recover(c *gin.Context) {
 	// 加载defer异常处理
 	defer func() {
 		if err := recover(); err != nil {
+			if airbrakeHook != nil {
+				airbrakeHook.Notify(err, c.Request)
+			}
 			c.Writer.WriteHeader(http.StatusInternalServerError)
 			log.Printf("Error:%s", err)
 			// 返回统一的Json风格
@@ -115,4 +89,14 @@ func Recover(c *gin.Context) {
 	}
 	//继续操作
 	c.Next()
+
+	// Report 5xx errors after handler execution (non-panic paths).
+	if c.Writer.Status() >= http.StatusInternalServerError && len(c.Errors) > 0 {
+		for _, e := range c.Errors {
+			if airbrakeHook != nil {
+				airbrakeHook.Notify(e.Err, c.Request)
+			}
+			log.Printf("server error: %v", e.Err)
+		}
+	}
 }

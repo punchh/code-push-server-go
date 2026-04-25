@@ -22,7 +22,10 @@ func GetUserDB() (odb *gorm.DB, err error) {
 	dbConfig := config.GetConfig().DBUser
 	dsnSource := dbConfig.Write.UserName + ":" + dbConfig.Write.Password + "@tcp(" + dbConfig.Write.Host + ":" + strconv.Itoa(int(dbConfig.Write.Port)) + ")/" + dbConfig.Write.DBname + "?charset=utf8mb4&parseTime=True&loc=Local"
 
-	// Same driver as go-email-templates (sql.Open("nrmysql", ...)); pairs with HTTP txns when using Request context.
+	// New Relic datastore instrumentation:
+	// Using the "nrmysql" driver enables MySQL metrics. To associate DB segments with the
+	// current HTTP transaction, queries must run with the request context
+	// (e.g. via `db.WithContext(c.Request.Context())` in handlers).
 	db, err := gorm.Open(mysql.New(mysql.Config{
 		DriverName: "nrmysql",
 		DSN:        dsnSource,
