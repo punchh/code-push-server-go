@@ -5,6 +5,7 @@ import (
 	"log"
 	"net/http"
 	"reflect"
+	"strings"
 
 	"com.lc.go.codepush/server/config"
 	"com.lc.go.codepush/server/model"
@@ -24,7 +25,12 @@ func CheckToken(ctx *gin.Context) {
 	}
 
 	if token == "" {
-		log.Panic("Token can't null")
+		ctx.JSON(http.StatusUnauthorized, gin.H{
+			"code": 1100,
+			"msg":  "Token required",
+		})
+		ctx.Abort()
+		return
 	}
 
 	// 1. Try JWT validation
@@ -35,7 +41,7 @@ func CheckToken(ctx *gin.Context) {
 
 	// 2. Fall back to existing DB token lookup (UUID from code-push login)
 	tokenNow := model.GetOne[model.Token]("token=?", token)
-	if tokenNow == nil || tokenNow.ExpireTime == nil || tokenNow.Del == nil {
+	if tokenNow == nil || tokenNow.ExpireTime == nil || tokenNow.Del == nil || tokenNow.Uid == nil {
 		ctx.JSON(http.StatusUnauthorized, gin.H{"code": 1100, "msg": "Invalid token"})
 		ctx.Abort()
 		return
@@ -77,11 +83,15 @@ func validateJWT(tokenStr string) (int, bool) {
 		return 0, false
 	}
 
+	email := ""
 	if email, _ := claims["email"].(string); email == "" {
 		return 0, false
 	}
+	if strings.HasSuffix(email, "@punchh.com") || strings.HasSuffix(email, "@partech.com") {
+		return 1, true
+	}
 
-	return 1, true
+	return 0, false
 }
 
 // 異常處理

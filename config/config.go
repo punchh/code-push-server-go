@@ -21,7 +21,7 @@ type appConfig struct {
 	TokenExpireTime int64
 	Environment     string `json:"environment" validate:"required"`
 	TenantName      string `json:"tenant_name" validate:"required"`
-	JWTSecret string
+	JWTSecret       string `json:"jwt_secret" validate:"required"`
 }
 type dbConfig struct {
 	Write           dbConfigObj
