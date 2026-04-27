@@ -2,10 +2,15 @@ package request
 
 import (
 	"bytes"
+	"fmt"
+	"io"
 	"log"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"path/filepath"
+	"strings"
 
 	"com.lc.go.codepush/server/config"
 	"com.lc.go.codepush/server/db"
@@ -23,6 +28,9 @@ import (
 	"github.com/jlaffaye/ftp"
 	"gorm.io/gorm"
 )
+
+// maxBundleUploadBytes is the maximum allowed size for a single CodePush bundle upload.
+const maxBundleUploadBytes int64 = 50 << 20 // 50 MiB
 
 type App struct{}
 
@@ -65,13 +73,17 @@ type createBundleReq struct {
 	Version     *string `json:"version" binding:"required"`
 	Size        *int64  `json:"size" binding:"required"`
 	Hash        *string `json:"hash" binding:"required"`
+	Mandatory   *bool   `json:"mandatory"`
 }
 
 func (App) CreateBundle(ctx *gin.Context) {
 	createBundleReq := createBundleReq{}
 	if err := ctx.ShouldBindBodyWith(&createBundleReq, binding.JSON); err == nil {
 		uid := ctx.MustGet(constants.GIN_USER_ID).(int)
-
+		mandatory := false
+		if createBundleReq.Mandatory != nil {
+			mandatory = *createBundleReq.Mandatory
+		}
 		app := model.App{}.GetAppByUidAndAppName(uid, *createBundleReq.AppName)
 		if app == nil {
 			log.Panic("App not found")
@@ -128,6 +140,10 @@ func (App) CreateBundle(ctx *gin.Context) {
 		deploymentVersion.UpdateTime = utils.GetTimeNow()
 		model.Update[model.DeploymentVersion](deploymentVersion)
 		redis.DelRedisObj(constants.REDIS_UPDATE_INFO + *deployment.Key + "*")
+		ctx.JSON(http.StatusOK, gin.H{
+			"success":   true,
+			"mandatory": mandatory,
+		})
 	} else {
 		log.Panic(err.Error())
 	}
@@ -136,6 +152,7 @@ func (App) CreateBundle(ctx *gin.Context) {
 type createDeploymentInfo struct {
 	AppName        *string `json:"appName" binding:"required"`
 	DeploymentName *string `json:"deploymentName" binding:"required"`
+	Key            *string `json:"key"`
 }
 
 func (App) CreateDeployment(ctx *gin.Context) {
@@ -150,12 +167,15 @@ func (App) CreateDeployment(ctx *gin.Context) {
 		if deployment != nil {
 			log.Panic("Deployment name " + *createDeploymentInfo.DeploymentName + " exist")
 		}
-		uuid, _ := uuid.NewUUID()
-		key := uuid.String()
+		if createDeploymentInfo.Key == nil || *createDeploymentInfo.Key == "" {
+			uuid, _ := uuid.NewUUID()
+			uuidStr := uuid.String()
+			createDeploymentInfo.Key = &uuidStr
+		}
 		newDeployment := model.Deployment{
 			AppId:      app.Id,
 			Name:       createDeploymentInfo.DeploymentName,
-			Key:        &key,
+			Key:        createDeploymentInfo.Key,
 			CreateTime: utils.GetTimeNow(),
 		}
 		err := model.Create[model.Deployment](&newDeployment)
@@ -164,7 +184,7 @@ func (App) CreateDeployment(ctx *gin.Context) {
 		}
 		ctx.JSON(http.StatusOK, gin.H{
 			"name": createDeploymentInfo.DeploymentName,
-			"key":  key,
+			"key":  *createDeploymentInfo.Key,
 		})
 	} else {
 		log.Panic(err.Error())
@@ -173,62 +193,85 @@ func (App) CreateDeployment(ctx *gin.Context) {
 func (App) UploadBundle(ctx *gin.Context) {
 	_, headers, err := ctx.Request.FormFile("file")
 	if err != nil {
-		log.Printf("Error when try to get file: %v", err)
+		ctx.JSON(http.StatusBadRequest, gin.H{
+			"success": false,
+			"msg":     "file is required",
+		})
+		return
 	}
+	if headers.Size > maxBundleUploadBytes {
+		ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{
+			"success": false,
+			"msg":     "bundle size must be at most 50 MB",
+		})
+		return
+	}
+
 	file, err := headers.Open()
 	if err != nil {
 		log.Panic(err.Error())
 	}
 	defer file.Close()
-	config := config.GetConfig()
 
+	// Read at most max+1 bytes so streams larger than the cap fail without loading the whole file.
+	data, err := io.ReadAll(io.LimitReader(file, maxBundleUploadBytes+1))
+	if err != nil {
+		log.Panic(err.Error())
+	}
+	if int64(len(data)) > maxBundleUploadBytes {
+		ctx.JSON(http.StatusRequestEntityTooLarge, gin.H{
+			"success": false,
+			"msg":     "bundle size must be at most 50 MB",
+		})
+		return
+	}
+
+	cfg := config.GetConfig()
 	key := headers.Filename
+	body := bytes.NewReader(data)
 
-	switch config.CodePush.FileLocal {
+	switch cfg.CodePush.FileLocal {
 	case "local":
-		exist := utils.Exists(config.CodePush.Local.SavePath)
+		exist := utils.Exists(cfg.CodePush.Local.SavePath)
 		if !exist {
-			err := os.MkdirAll(config.CodePush.Local.SavePath, 0777)
+			err := os.MkdirAll(cfg.CodePush.Local.SavePath, 0777)
 			if err != nil {
 				log.Panic(err.Error())
 			}
 		}
-		buf := new(bytes.Buffer)
-		_, err := buf.ReadFrom(file)
-		if err != nil {
+		if err := os.WriteFile(path.Clean(cfg.CodePush.Local.SavePath+"/"+key), data, 0777); err != nil {
 			log.Panic(err.Error())
 		}
-		os.WriteFile(path.Clean(config.CodePush.Local.SavePath+"/"+key), buf.Bytes(), 0777)
 	case "aws":
 		s3Config := &aws.Config{
-			Credentials:      credentials.NewStaticCredentials(config.CodePush.Aws.KeyId, config.CodePush.Aws.Secret, ""),
-			Endpoint:         aws.String(config.CodePush.Aws.Endpoint),
-			Region:           aws.String(config.CodePush.Aws.Region),
-			S3ForcePathStyle: aws.Bool(config.CodePush.Aws.S3ForcePathStyle),
+			Credentials:      credentials.NewStaticCredentials(cfg.CodePush.Aws.KeyId, cfg.CodePush.Aws.Secret, ""),
+			Endpoint:         aws.String(cfg.CodePush.Aws.Endpoint),
+			Region:           aws.String(cfg.CodePush.Aws.Region),
+			S3ForcePathStyle: aws.Bool(cfg.CodePush.Aws.S3ForcePathStyle),
 		}
 		newSession, _ := session.NewSession(s3Config)
 
 		s3Client := s3.New(newSession)
 
 		_, err = s3Client.PutObject(&s3.PutObjectInput{
-			Body:   file,
-			Bucket: aws.String(config.CodePush.Aws.Bucket),
+			Body:   body,
+			Bucket: aws.String(cfg.CodePush.Aws.Bucket),
 			Key:    &key,
 		})
 		if err != nil {
 			log.Panic(err.Error())
 		}
 	case "ftp":
-		f, err := ftp.Dial(config.CodePush.Ftp.ServerUrl)
+		f, err := ftp.Dial(cfg.CodePush.Ftp.ServerUrl)
 		if err != nil {
 			log.Panic(err.Error())
 		}
-		err = f.Login(config.CodePush.Ftp.UserName, config.CodePush.Ftp.Password)
+		err = f.Login(cfg.CodePush.Ftp.UserName, cfg.CodePush.Ftp.Password)
 		if err != nil {
 			log.Panic(err.Error())
 		}
 
-		err = f.Stor(key, file)
+		err = f.Stor(key, body)
 		if err != nil {
 			log.Panic(err.Error())
 		}
@@ -238,8 +281,36 @@ func (App) UploadBundle(ctx *gin.Context) {
 
 	}
 
+	fileName := path.Base(strings.TrimSpace(key))
+	if fileName == "" || fileName == "." {
+		fileName = key
+	}
+
+	downloadURL := ""
+	if ru := strings.TrimSpace(cfg.ResourceUrl); ru != "" {
+		downloadURL = strings.TrimSuffix(ru, "/") + "/" + url.PathEscape(fileName)
+	} else {
+		switch cfg.CodePush.FileLocal {
+		case "aws":
+			a := cfg.CodePush.Aws
+			ep := strings.TrimSuffix(strings.TrimSpace(a.Endpoint), "/")
+			if a.S3ForcePathStyle || strings.HasPrefix(ep, "http://") || strings.HasPrefix(ep, "https://") {
+				downloadURL = fmt.Sprintf("%s/%s/%s", ep, a.Bucket, url.PathEscape(fileName))
+			} else {
+				downloadURL = fmt.Sprintf("https://%s.s3.%s.amazonaws.com/%s", a.Bucket, a.Region, url.PathEscape(fileName))
+			}
+		case "local":
+			downloadURL = filepath.ToSlash(filepath.Join(cfg.CodePush.Local.SavePath, fileName))
+		case "ftp":
+			base := strings.TrimSuffix(strings.TrimSpace(cfg.CodePush.Ftp.ServerUrl), "/")
+			downloadURL = base + "/" + url.PathEscape(fileName)
+		}
+	}
+
 	ctx.JSON(http.StatusOK, gin.H{
-		"success": true,
+		"success":     true,
+		"fileName":    fileName,
+		"downloadUrl": downloadURL,
 	})
 }
 
@@ -311,10 +382,13 @@ func (App) LsApp(ctx *gin.Context) {
 	if len(*apps) <= 0 {
 		log.Panic("No app")
 	}
-	var appsRep []string
+	var appsRep []createAppReq
 
 	for _, v := range *apps {
-		appsRep = append(appsRep, *v.AppName)
+		appsRep = append(appsRep, createAppReq{
+			AppName: v.AppName,
+			OS:      v.OS,
+		})
 	}
 	ctx.JSON(http.StatusOK, appsRep)
 }
@@ -323,6 +397,52 @@ type checkBundleReq struct {
 	AppName    *string `json:"appName" binding:"required"`
 	Deployment *string `json:"deployment" binding:"required"`
 	Version    *string `json:"version" binding:"required"`
+}
+
+type listBundlesReq struct {
+	AppName    *string `json:"appName" binding:"required"`
+	Deployment *string `json:"deployment" binding:"required"`
+}
+
+// LsBundle returns the three most recently updated deployment_version rows for the app/deployment,
+// each with the current package (bundle) when current_package is set.
+func (App) LsBundle(ctx *gin.Context) {
+	req := listBundlesReq{}
+	if err := ctx.ShouldBindBodyWith(&req, binding.JSON); err != nil {
+		log.Panic(err.Error())
+	}
+	uid := ctx.MustGet(constants.GIN_USER_ID).(int)
+	app := model.App{}.GetAppByUidAndAppName(uid, *req.AppName)
+	if app == nil {
+		log.Panic("App not found")
+	}
+	deployment := model.Deployment{}.GetByAppidAndName(*app.Id, *req.Deployment)
+	if deployment == nil {
+		log.Panic("Deployment " + *req.Deployment + " not found")
+	}
+	const listBundlesLimit = 3
+	versions := model.DeploymentVersion{}.ListLatestForDeployment(*deployment.Id, listBundlesLimit)
+	bundles := make([]gin.H, 0, len(versions))
+	for i := range versions {
+		dv := &versions[i]
+		item := gin.H{
+			"deploymentVersionId": dv.Id,
+			"appVersion":          dv.AppVersion,
+			"versionNum":          dv.VersionNum,
+			"updateTime":          dv.UpdateTime,
+			"createTime":          dv.CreateTime,
+		}
+		if dv.CurrentPackage != nil {
+			if p := model.GetOne[model.Package]("id=?", *dv.CurrentPackage); p != nil {
+				item["package"] = p
+			}
+		}
+		bundles = append(bundles, item)
+	}
+	ctx.JSON(http.StatusOK, gin.H{
+		"success": true,
+		"bundles": bundles,
+	})
 }
 
 func (App) CheckBundle(ctx *gin.Context) {

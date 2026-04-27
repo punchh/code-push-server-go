@@ -35,3 +35,16 @@ func (DeploymentVersion) GetNewVersionByKeyDeploymentId(deploymentId int) *Deplo
 func (DeploymentVersion) UpdateCurrentPackage(id int, pid *int) {
 	userDb.Raw("update deployment_version set current_package=? where id=?", pid, id).Scan(&DeploymentVersion{})
 }
+
+// ListLatestForDeployment returns deployment_version rows for a deployment, newest activity first.
+func (DeploymentVersion) ListLatestForDeployment(deploymentID int, limit int) []DeploymentVersion {
+	var rows []DeploymentVersion
+	err := userDb.Where("deployment_id = ?", deploymentID).
+		Order("update_time DESC, id DESC").
+		Limit(limit).
+		Find(&rows).Error
+	if err != nil {
+		return []DeploymentVersion{}
+	}
+	return rows
+}
