@@ -43,6 +43,7 @@ func main() {
 		authApi.POST("/createDeployment", request.App{}.CreateDeployment)
 		authApi.POST("/createBundle", request.App{}.CreateBundle)
 		authApi.POST("/checkBundle", request.App{}.CheckBundle)
+		authApi.POST("/lsBundle", request.App{}.LsBundle)
 		authApi.POST("/delApp", request.App{}.DelApp)
 		authApi.POST("/delDeployment", request.App{}.DelDeployment)
 		authApi.POST("/lsDeployment", request.App{}.LsDeployment)
