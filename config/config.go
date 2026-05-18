@@ -1,11 +1,9 @@
 package config
 
 import (
-	"encoding/json"
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/go-playground/validator/v10"
@@ -76,150 +74,75 @@ func GetConfig() *appConfig {
 	return config
 }
 
-func LoadConfig() *appConfig {
-	fmt.Println("Fetching config from AWS secret manager...")
-	keys := []string{
-		"global",  // Global secrets
-		"tenant",  // Tendancy punchh-server secrets
-		"service", // Email template secrets
-		"db",      // DB secrets
+func envUint(key string) uint {
+	v := os.Getenv(key)
+	if v == "" {
+		return 0
 	}
+	u64, _ := strconv.ParseUint(v, 10, 32)
+	return uint(u64)
+}
+
+func LoadConfig() *appConfig {
+	fmt.Println("Loading config from environment variables...")
 
 	var config appConfig
 
-	var dbObj dbConfigObj
-	var redis redisConfig
-	var buildSaveLocation codePush
-	var aws awsConfig
-	var ftp ftpConfig
-
-	// default values
+	// defaults
 	config.DBUser.MaxIdleConns = 5
 	config.DBUser.MaxOpenConns = 20
 	config.DBUser.ConnMaxLifetime = 300
-
 	config.Port = ":8080"
 	config.UrlPrefix = "/"
 	config.ResourceUrl = ""
-	config.TokenExpireTime = 1 //in days
+	config.TokenExpireTime = 1
 
-	for _, key := range keys {
-		key = key + "_secrets"
-
-		data, ok := os.LookupEnv(key)
-		if !ok {
-			fmt.Println("config: no secrets found for - ", key)
-			continue
-		}
-
-		secrets := make(map[string]interface{})
-		if err := json.Unmarshal([]byte(data), &secrets); err != nil {
-			fmt.Println("config: error unmarshalling secrets for - ", key)
-			panic(err)
-		}
-
-		for k, v := range secrets {
-			k = strings.ToLower(k)
-			fmt.Println(k)
-			// DB
-			if k == "db_username" {
-				dbObj.UserName = v.(string)
-			}
-			if k == "db_password" {
-				dbObj.Password = v.(string)
-			}
-			if k == "db_host" {
-				dbObj.Host = v.(string)
-			}
-			if k == "db_port" {
-				u64, _ := strconv.ParseUint(v.(string), 10, 32)
-				dbObj.Port = uint(u64)
-			}
-			if k == "db_name" {
-				dbObj.DBname = v.(string)
-			}
-
-			// Redis
-			if k == "redis_host" {
-				redis.Host = v.(string)
-			}
-			if k == "redis_port" {
-				u64, _ := strconv.ParseUint(v.(string), 10, 32)
-				redis.Port = uint(u64)
-			}
-			if k == "redis_db_index" {
-				u64, _ := strconv.ParseUint(v.(string), 10, 32)
-				redis.DBIndex = uint(u64)
-			}
-			if k == "redis_username" {
-				redis.UserName = v.(string)
-			}
-			if k == "redis_password" {
-				redis.Password = v.(string)
-			}
-
-			// local bundle save location
-			if k == "build_save_location" {
-				buildSaveLocation.FileLocal = v.(string)
-			}
-
-			// AWS
-			if k == "aws_s3_endpoint" {
-				aws.Endpoint = v.(string)
-			}
-			if k == "aws_region" {
-				aws.Region = v.(string)
-			}
-			if k == "aws_s3_force_path_style" {
-				aws.S3ForcePathStyle = true
-			}
-			if k == "aws_access_key_id" {
-				aws.KeyId = v.(string)
-			}
-			if k == "aws_secret_access_key" {
-				aws.Secret = v.(string)
-			}
-			if k == "aws_s3_bucket_name" {
-				aws.Bucket = v.(string)
-			}
-
-			// ftp
-			if k == "ftp_server_url" {
-				ftp.ServerUrl = v.(string)
-			}
-			if k == "ftp_username" {
-				ftp.UserName = v.(string)
-			}
-			if k == "ftp_password" {
-				ftp.Password = v.(string)
-			}
-			// common
-
-			// if build_save_location is set to `local` then resource URL should the self server URL
-			// if build_save_location is set to `aws` then resource URL should the AWS S3 bucket URL
-			if k == "resource_url" {
-				config.ResourceUrl = v.(string)
-			}
-			if k == "tenant_name" {
-				config.TenantName = v.(string)
-			}
-
-			if k == "environment" {
-				config.Environment = v.(string)
-			}
-
-			if k == "jwt_secret" {
-				config.JWTSecret = v.(string)
-			}
-		}
+	// DB
+	config.DBUser.Write = dbConfigObj{
+		UserName: os.Getenv("DB_USERNAME"),
+		Password: os.Getenv("DB_PASSWORD"),
+		Host:     os.Getenv("DB_HOST"),
+		Port:     envUint("DB_PORT"),
+		DBname:   os.Getenv("DB_NAME"),
 	}
-	config.DBUser.Write = dbObj
-	config.Redis = redis
-	config.CodePush = buildSaveLocation
-	config.CodePush.Aws = aws
-	config.CodePush.Ftp = ftp
 
-	// validate the config
+	// Redis
+	config.Redis = redisConfig{
+		Host:     os.Getenv("REDIS_HOST"),
+		Port:     envUint("REDIS_PORT"),
+		DBIndex:  envUint("REDIS_DB_INDEX"),
+		UserName: os.Getenv("REDIS_USERNAME"),
+		Password: os.Getenv("REDIS_PASSWORD"),
+	}
+
+	// CodePush / build storage
+	config.CodePush = codePush{
+		FileLocal: os.Getenv("BUILD_SAVE_LOCATION"),
+		Local: localConfig{
+			SavePath: os.Getenv("LOCAL_BUILD_SAVE_PATH"),
+		},
+		Aws: awsConfig{
+			Endpoint:         os.Getenv("AWS_S3_ENDPOINT"),
+			Region:           os.Getenv("AWS_REGION"),
+			S3ForcePathStyle: os.Getenv("AWS_S3_FORCE_PATH_STYLE") == "true",
+			KeyId:            os.Getenv("AWS_ACCESS_KEY_ID"),
+			Secret:           os.Getenv("AWS_SECRET_ACCESS_KEY"),
+			Bucket:           os.Getenv("AWS_S3_BUCKET_NAME"),
+		},
+		Ftp: ftpConfig{
+			ServerUrl: os.Getenv("FTP_SERVER_URL"),
+			UserName:  os.Getenv("FTP_USERNAME"),
+			Password:  os.Getenv("FTP_PASSWORD"),
+		},
+	}
+
+	// Common
+	config.ResourceUrl = os.Getenv("RESOURCE_URL")
+	config.TenantName = os.Getenv("TENANT_NAME")
+	config.Environment = os.Getenv("ENVIRONMENT")
+	config.JWTSecret = os.Getenv("JWT_SECRET")
+
+	// validate
 	validate := validator.New()
 	if err := validate.Struct(config); err != nil {
 		fmt.Println("config: invalid/missing configuration", err)
